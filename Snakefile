@@ -5,6 +5,7 @@ relatedir = 'relate' #path to your version of relate
 
 # we start by assuming you have run Relate's EstimatePopulationSize to get the following files (see https://myersgroup.github.io/relate/modules.html#CoalescenceRate)
 #prefix = 'test' #only contemporary samples
+
 prefix = 'SGDP_contemporary_only_chr2' #contemporary and ancient samples
 # anc = datadir + 'SGDP_aDNA_new_filtered_chr2.anc' #name of anc files, with wildcard for chromosome (chr)
 # mut = datadir + 'SGDP_aDNA_new_filtered_chr2.mut' #name of mut files
@@ -290,7 +291,6 @@ rule process_times:
 
     np.save(output[1],np.array(sts_inv)) #write out as numpy array to avoid numerical issues
 
-                  #about 3 minutes per job
 
 # ----------- estimate dispersal ------------------------
 
@@ -363,23 +363,6 @@ rule dispersal_rate:
     sample_times = np.sort(x) #sampling times in asceding order
 
 
-    
-# --- Consistency checks ---
-#    num_samples = locations.shape[0]
-#   assert k == num_samples, f"Mismatch: sampling matrix size ({k}) ≠ number of samples ({num_samples})"
-#   
-#    for i, block in enumerate(stss_inv):
-#        for j, mat in enumerate(block):
-#           assert mat.shape == (num_samples, num_samples), \
-#                f"stss_inv[{i}][{j}] has shape {mat.shape}, expected ({num_samples},{num_samples})"
-#    
-#    for i, logdet in enumerate(stss_logdet):
-#        assert logdet.shape[0] == len(stss_inv[i]), \
-#            f"logdet[{i}] count ({logdet.shape[0]}) ≠ stss_inv[{i}] count ({len(stss_inv[i])})"
-#    
-#    assert len(btss) == len(stss_inv) == len(lpcs) == len(stss_logdet), \
-#        "Mismatch in the number of loci across input lists"
-
     # estimate dispersal rate
     def callbackF(x):
       '''print updates during numerical search'''
@@ -392,59 +375,6 @@ rule dispersal_rate:
 
 # took 5hr 45 min for 100 dispersal loci
 
-# ---------------- convert files to npy to reduce I/O operations -----------------
-# processed_prefix_stss = "data/SGDP_aDNA_new_filtered_chr2_{locus}locus_{M}M"
-# rule convert_stss_to_npy:
-#   input:
-#     stss = processed_prefix_stss + ".stss"
-#   output:
-#     stss_npy = processed_prefix_stss + "_stss.npy"
-#   run:
-#     import os
-
-#     os.environ["OMP_NUM_THREADS"] = str(threads)
-#     os.environ["GOTO_NUM_THREADS"] = str(threads)
-#     os.environ["OPENBLAS_NUM_THREADS"] = str(threads)
-#     os.environ["MKL_NUM_THREADS"] = str(threads)
-#     os.environ["VECLIB_MAXIMUM_THREADS"] = str(threads)
-#     os.environ["NUMEXPR_NUM_THREADS"] = str(threads)
-
-#     import numpy as np
-#     arr = np.loadtxt(input.stss, delimiter=',')
-#     np.save(output.stss_npy, arr)
-
-
-# # processed_times_npy = processed_times.replace('.{end}','_{end}.npy')
-# # ends = ['stss_inv','btss','lpcs']
-
-# processed_prefix = "data/SGDP_aDNA_new_filtered_chr2_{locus}locus_{M}M_{T}T"
-
-# rule convert_to_npy:
-#   input:
-#     stss_inv = processed_prefix + ".stss_inv",
-#     btss     = processed_prefix + ".btss",
-#     lpcs     = processed_prefix + ".lpcs"
-#   output:
-#     stss_inv_npy = processed_prefix + "_stss_inv.npy",
-#     btss_npy     = processed_prefix + "_btss.npy",
-#     lpcs_npy     = processed_prefix + "_lpcs.npy"
-#   run:
-#     import os
-
-#     os.environ["OMP_NUM_THREADS"] = str(threads)
-#     os.environ["GOTO_NUM_THREADS"] = str(threads)
-#     os.environ["OPENBLAS_NUM_THREADS"] = str(threads)
-#     os.environ["MKL_NUM_THREADS"] = str(threads)
-#     os.environ["VECLIB_MAXIMUM_THREADS"] = str(threads)
-#     os.environ["NUMEXPR_NUM_THREADS"] = str(threads)
-
-#     import numpy as np
-#     arr = np.loadtxt(input.stss_inv, delimiter=',')
-#     np.save(output.stss_inv_npy, arr)
-#     arr = np.loadtxt(input.btss, delimiter=',')
-#     np.save(output.btss_npy, arr)
-#     arr = np.loadtxt(input.lpcs, delimiter=',')
-#     np.save(output.lpcs_npy, arr)
 
 # ----------------------- locate ancestors -----------------------
 
@@ -549,7 +479,7 @@ rule locate_ancestors:
       times = [float(t)]
     ancestor_locations = locate_ancestors(samples=samples, times=times, 
                                           shared_times_chopped=stss, shared_times_chopped_centered_inverted=stss_inv, locations=locations, 
-                                          sigma=sigma, log_weights=log_weights)
+                                          sigma=sigma, log_weights=log_weights, sample_times=sample_times)
     with open(output[0], 'a') as f:
       for anc_loc in ancestor_locations:
         f.write(','.join([str(int(anc_loc[0]))] + [str(i) for i in anc_loc[1:]]) + '\n') #save
@@ -595,6 +525,12 @@ rule locate_ancestors_blup_weightless:
     # shared times
     stss = np.loadtxt(input.stss, delimiter=',') #list of vectorized shared times matrices
     k = int((np.sqrt(1+8*len(stss[0])-1)+1)/2) #get size of matrix (from sum_i=0^k i = k(k+1)/2)
+    mat = np.zeros((k,k))
+    mat[np.triu_indices(k, k=0)] = stss[0] #convert to numpy matrix
+    mat = mat + mat.T - np.diag(np.diag(mat))      
+    x = np.diag(mat) #shared times with self
+    x = np.max(x) - x #sampling times
+    sample_times = np.sort(x) #sampling times in asceding order
     stss_mat = [] #list of chopped shared times matrices in matrix form
     for sts in stss:
       sts = chop_shared_times(sts, T=T) #chop shared times to ignore history beyond T
@@ -630,7 +566,7 @@ rule locate_ancestors_blup_weightless:
       times = [float(t)]
     ancestor_locations = locate_ancestors(samples=samples, times=times, 
                                           shared_times_chopped=stss, shared_times_chopped_centered_inverted=stss_inv, locations=locations, 
-                                          log_weights=log_weights, BLUP=True, BLUP_var=True)
+                                          log_weights=log_weights, BLUP=True, BLUP_var=True, sample_times=sample_times)
     with open(output[0], 'a') as f:
       for anc_loc in ancestor_locations:
         f.write(','.join([str(int(anc_loc[0]))] + [str(i) for i in anc_loc[1:]]) + '\n') #save
