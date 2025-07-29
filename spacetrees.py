@@ -4,17 +4,19 @@ import time
 import numpy as np
 import math
 from tqdm import tqdm 
+from utils import center_shared_times
 
 def locate_ancestors(samples, times, 
-                     shared_times_chopped, shared_times_chopped_centered_inverted, locations, 
+                     shared_times_chopped, locations, 
+                     shared_times_chopped_centered_inverted=None, forget_locations=False,
                      log_weights=None, sigma=1, x0_final=None, BLUP=False, BLUP_var=False, quiet=False, sample_times=None):
 
     """
     Locate genetic ancestors given sample locations and shared times.
     """
-   
+  
+    # print some info 
     if not quiet: print('\n%%%%%%%%%%%% locating ancestors with spacetrees %%%%%%%%%%%%')
-
     M = len(shared_times_chopped)
     try: 
         n, d = locations.shape
@@ -25,48 +27,74 @@ def locate_ancestors(samples, times,
     if not quiet: print('samples:',samples,'\ntimes:',times)
 
     # preprocess locations 
+    if forget_locations:
+      locations = np.delete(locations, samples, axis=0)
+      n = len(locations)
     mean_location = np.mean(locations, axis=0) #mean location
     Tmat = np.identity(n) - [[1/n for _ in range(n)] for _ in range(n)]; Tmat = Tmat[:-1] #mean centering matrix
     locations_centered = np.matmul(Tmat, locations) #centered locations
 
     # preprocess shared times
+    if forget_locations:
+      Ss = shared_times_chopped
+      stsc = []
+      for sts in shared_times_chopped:
+        sts = np.delete(sts, samples, axis=0) #drop rows
+        sts = np.delete(sts, samples, axis=1) #drop columns
+        stsc.append(sts)
+      shared_times_chopped = stsc
     stmrs = []
     stms = []
-    stcilcs = []
-    for stsc, stci in zip(shared_times_chopped, shared_times_chopped_centered_inverted): #over trees
+    for stsc in shared_times_chopped: #over trees
         stmr = np.mean(stsc, axis=1) #average times in each row
         stmrs.append(stmr)
         stm = np.mean(stmr) #average times in whole matrix
         stms.append(stm)
+
+    # preprocess inverted shared times
+    if shared_times_chopped_centered_inverted is None:
+      shared_times_chopped_centered_inverted = []
+      for stsc in shared_times_chopped: 
+        stc = center_shared_times(stsc) #center
+        stci = np.linalg.inv(stc) #invert
+        shared_times_chopped_centered_inverted.append(stci)
+    stcilcs = []
+    for stci in shared_times_chopped_centered_inverted:
         stcilc = np.matmul(stci, locations_centered) #a product we will use
         stcilcs.append(stcilc)
 
+    # define default weights and times
     if log_weights is None:
       log_weights = [0] * M #set all weights equal
-
     if sample_times is None:
         sample_times = np.zeros(n) #all contemporary unless otherwise stated
 
+    # locate ancestors
     ancestor_locations = []
     for sample in tqdm(samples):
+
+        if times is None:
+          times = [sample_times[sample]]
         for time in times:
 
+            # can't locate ancestor that is more recent than the sample
             if time < sample_times[sample]:
-           
-                print('trying to locate ancestor more recent than sample')
                 mle = [np.nan] * d 
                 if BLUP_var:
                     mle.append(np.nan)
 
             else:
-
                 # calculate likelihoods or mles over trees
                 fs = []
                 mles = []
                 bvars = []
-                for stsc, stci, stmr, stm, stcilc in zip(shared_times_chopped, shared_times_chopped_centered_inverted, stmrs, stms, stcilcs):
+                for i,(stsc, stci, stmr, stm, stcilc) in enumerate(zip(shared_times_chopped, shared_times_chopped_centered_inverted, stmrs, stms, stcilcs)):
                 
-                    at = _anc_times(stsc, time, sample) #shared times between samples and ancestor of sample at time 
+                    if forget_locations:
+                      at = _anc_times(Ss[i], time, sample)
+                      at = np.delete(at, samples, axis=0) #remove shared time with forgotten samples
+                    else:
+                      at = _anc_times(stsc, time, sample) #shared times between samples and ancestor of sample at time 
                     atc = np.matmul(Tmat, (at[:-1] - stmr)) #center this
                     taac = at[-1] - 2*np.mean(at[:-1]) + stm #center shared times of ancestor with itself
                     mle = mean_location + np.matmul(atc.transpose(), stcilc) #most likely location
@@ -143,6 +171,7 @@ def estimate_dispersal(locations, shared_times_inverted, shared_times_logdet=Non
             for sts in stss: #loop over trees
                 guess += _mle_dispersal_tree(locations, sts) 
         guess = guess/(L*M) #avg mle over all trees and loci (note that we can avg over all trees and loci simultaneously because same number of trees at every locus)
+        print(guess)
         x0 = _sigma_to_sds_rho(guess) #convert initial dispersal rate to standard deviations and correlation, to feed into numerical search
         if BLUP:            
             return x0 #best linear unbiased predictor (returned as sds and corr, like numerical search below)
@@ -329,7 +358,7 @@ def _mc(locations, shared_times_inverted, shared_times_logdet, sigma_inverted, l
         for sti, ldst, bts, lpc in zip(shared_times_inverted, shared_times_logdet, branching_times, logpcoals):
             LLRs.append(_log_likelihoodratio(locations=locations, shared_times_inverted=sti, shared_times_logdet=ldst,
                                              sigma_inverted=sigma_inverted, log_det_sigma=log_det_sigma, 
-                                             important=important, branching_times=bts, phi=phi, logpcoals=lpc))
+                                             important=important, branching_times=bts, sample_times=sample_times, phi=phi, logpcoals=lpc))
 
     else:
         for sti, ldst in zip(shared_times_inverted, shared_times_logdet):

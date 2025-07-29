@@ -278,9 +278,12 @@ rule process_times:
                 stss_logdet.write(str(sts_logdet) + '\n') #append as new line 
           
                 # inverse
-                sts = np.linalg.inv(sts) #inverse
-                sts = sts[np.triu_indices(k-1, k=0)] #convert to list
-                sts_inv.append(sts)
+                try:
+                  stsi = np.linalg.inv(sts) #inverse
+                except:
+                  stsi = np.linalg.pinv(sts) #pseudo inverse
+                stsi = stsi[np.triu_indices(k-1, k=0)] #convert to list
+                sts_inv.append(stsi)
 
                 # branching times
                 cts = np.fromstring(cts, dtype=float, sep=',') 
@@ -432,8 +435,7 @@ rule locate_ancestors:
     mat[np.triu_indices(k, k=0)] = stss[0] #convert to numpy matrix
     mat = mat + mat.T - np.diag(np.diag(mat))      
     x = np.diag(mat) #shared times with self
-    x = np.max(x) - x #sampling times
-    sample_times = np.sort(x) #sampling times in asceding order
+    sample_times = np.max(x) - x #sampling times
     stss_mat = [] #list of chopped shared times matrices in matrix form
     for sts in stss:
       sts = chop_shared_times(sts, T=T) #chop shared times to ignore history beyond T
@@ -470,7 +472,7 @@ rule locate_ancestors:
     sigma = _sds_rho_to_sigma(sigma[:-1]) #dispersal as covariance matrix
 
     # calculate importance weights
-    lbds = np.array([_log_birth_density(bts, sample_times, phi) for bts in btss]) #log probability densities of birth times
+    lbds = np.array([_log_birth_density(bts, np.sort(sample_times), phi) for bts in btss]) #log probability densities of birth times
     log_weights = lbds - lpcs #log importance weights
 
     # locate ancestors
@@ -536,30 +538,29 @@ rule locate_ancestors_blup_weightless:
     mat[np.triu_indices(k, k=0)] = stss[0] #convert to numpy matrix
     mat = mat + mat.T - np.diag(np.diag(mat))      
     x = np.diag(mat) #shared times with self
-    x = np.max(x) - x #sampling times
-    sample_times = np.sort(x) #sampling times in asceding order
+    sample_times = np.max(x) - x #sampling times
     stss_mat = [] #list of chopped shared times matrices in matrix form
     for sts in stss:
       sts = chop_shared_times(sts, T=T) #chop shared times to ignore history beyond T
       mat = np.zeros((k,k))
       #mat[np.triu_indices(k, k=1)] = sts[1:] #convert to numpy matrix
-      mat[np.triu_indices(k, k=0)] = sts
-      mat = mat + mat.T - np.diag(np.diag(mat))     
+      #mat = mat + mat.T + np.diag([sts[0]]*k)      
+      mat[np.triu_indices(k, k=0)] = sts #convert to numpy matrix
+      mat = mat + mat.T - np.diag(np.diag(mat))      
       stss_mat.append(mat)
     stss = stss_mat
-    # shared times centered and inverted
-    stss_inv = np.load(input.stss_inv) #list of vectorized matrices
-    k = k-1 #drop a sample because centered
-    stss_inv_mat = [] #list of inverses in matrix form
+    # shared times chopped centered inverted
+    stss_inv = np.load(input.stss_inv) #list of vectorized chopped centered inverted shared times matrices
+    k = k-1 #get size of matrix
+    stss_inv_mat = [] #list of chopped shared times matrices in matrix form
     for sts_inv in stss_inv:
       mat = np.zeros((k,k))
       mat[np.triu_indices(k, k=0)] = sts_inv #convert to numpy matrix
       mat = mat + mat.T - np.diag(np.diag(mat))      
       stss_inv_mat.append(mat)
     stss_inv = stss_inv_mat
-
-    log_weights = [0] * int(wildcards.M)
-    locations = np.loadtxt(input.locations)
+    #locations 
+    locations = np.loadtxt(input.locations) #location of each sample
 
     # locate ancestors
     s = wildcards.s
@@ -574,7 +575,84 @@ rule locate_ancestors_blup_weightless:
       times = [float(t)]
     ancestor_locations = locate_ancestors(samples=samples, times=times, 
                                           shared_times_chopped=stss, shared_times_chopped_centered_inverted=stss_inv, locations=locations, 
-                                          log_weights=log_weights, BLUP=True, BLUP_var=True, sample_times=sample_times)
+                                          sample_times=sample_times, BLUP=True)
+    with open(output[0], 'a') as f:
+      for anc_loc in ancestor_locations:
+        f.write(','.join([str(int(anc_loc[0]))] + [str(i) for i in anc_loc[1:]]) + '\n') #save
+
+# ----------------------- locate samples that we forget the locations of -----------------------
+
+forgotten_locations_blup = processed_times.replace('{end}','_{s}s_{t}t.forgotten_locs')
+
+rule locate_forgotten_blup:
+  input:
+    stss = shared_times,
+    locations = locations
+  output:
+    forgotten_locations_blup
+  threads: 1
+  resources:
+    runtime=15
+  run:
+    # prevent numpy from using more than {threads} threads (useful for parallizing on my server)
+    import os
+    os.environ["OMP_NUM_THREADS"] = str(threads)
+    os.environ["GOTO_NUM_THREADS"] = str(threads)
+    os.environ["OPENBLAS_NUM_THREADS"] = str(threads)
+    os.environ["MKL_NUM_THREADS"] = str(threads)
+    os.environ["VECLIB_MAXIMUM_THREADS"] = str(threads)
+    os.environ["NUMEXPR_NUM_THREADS"] = str(threads)
+
+    # load tools
+    import numpy as np
+    from tqdm import tqdm
+    from spacetrees import locate_ancestors
+    from utils import chop_shared_times
+
+    T = wildcards.T #get time cutoff
+    T = None if T=='None' else float(T) #format correctly
+
+    # load input data
+    #locations 
+    locations = np.loadtxt(input.locations) #location of each sample
+    n = len(locations) #number of samples
+    # shared times
+    stss = np.loadtxt(input.stss, delimiter=',') #list of vectorized shared times matrices
+    mat = np.zeros((n,n))
+    mat[np.triu_indices(n, k=0)] = stss[0] #convert to numpy matrix
+    mat = mat + mat.T - np.diag(np.diag(mat))      
+    x = np.diag(mat) #shared times with self
+    sample_times = np.max(x) - x #sampling times
+    stss_mat = [] #list of chopped shared times matrices in matrix form
+    for sts in stss:
+      sts = chop_shared_times(sts, T=T) #chop shared times to ignore history beyond T
+      mat = np.zeros((n,n))
+      #mat[np.triu_indices(k, k=1)] = sts[1:] #convert to numpy matrix
+      #mat = mat + mat.T + np.diag([sts[0]]*k)      
+      mat[np.triu_indices(n, k=0)] = sts #convert to numpy matrix
+      mat = mat + mat.T - np.diag(np.diag(mat))      
+      stss_mat.append(mat)
+    stss = stss_mat
+
+    # locate ancestors
+    s = wildcards.s.split("_")
+    if s == 'All': #an option to locate the ancestors of all samples
+      samples = range(n)   
+    else:
+      try:
+        samples = [int(s)]
+      except:
+        samples = [int(i) for i in s]
+    t = wildcards.t
+    if t == 'All': #an option to locate at pretermined list of times 
+      times = ancestor_times
+    elif t == 'None':
+      times = None
+    else: 
+      times = [float(t)]
+    ancestor_locations = locate_ancestors(samples=samples, times=times, forget_locations=True,
+                                          shared_times_chopped=stss, locations=locations, 
+                                          sample_times=sample_times, BLUP=True)
     with open(output[0], 'a') as f:
       for anc_loc in ancestor_locations:
         f.write(','.join([str(int(anc_loc[0]))] + [str(i) for i in anc_loc[1:]]) + '\n') #save
@@ -583,9 +661,8 @@ rule locate_ancestors_blup_weightless:
 
 rule all:
   input:
-    expand(ancestor_locations, CHR=CHRS, locus=ancestor_loci, M=Ms, T=Ts, s=['All'], t=['All']),
-    expand(ancestor_locations_blup_weightless, CHR=CHRS, locus=ancestor_loci, M=Ms, T=Ts, s=['All'], t=['All'])
+    expand(dispersal_rate, M=Ms, T=Ts),
+    expand(ancestor_locations, CHR=CHRS, locus=ancestor_loci, M=Ms, T=[None], s=['All'], t=['All']),
+    expand(ancestor_locations_blup, CHR=CHRS, locus=ancestor_loci, M=Ms, T=[None], s=['All'], t=['All']),
+    expand(forgotten_locations_blup, CHR=CHRS, locus=ancestor_loci, M=Ms, T=[None], s=['218_219'], t=[None]) 
 
-rule run_blup:
-  input:
-    expand(ancestor_locations_blup_weightless, CHR=CHRS, locus=ancestor_loci, M=Ms, T=Ts, s=['All'], t=['All'])
