@@ -1,15 +1,15 @@
 # spacetrees
-Code to estimate dispersal rates and locate genetic ancestors from genome-wide genealogies. Associated with the paper, Osmond & Coop 2024: https://elifesciences.org/articles/72177.
+Code to estimate dispersal rates and locate genetic ancestors from genome-wide genealogies. Associated with the paper, Osmond & Coop 2024: https://elifesciences.org/articles/72177. Forked from https://github.com/osmond-lab/spacetrees.
 
 This version of the code has been updated to allow for ancient samples.
 
 Formerly referred to as sparg, but that name is now reserved for inferring spatial histories from full ancestral recombination graphs (https://github.com/osmond-lab/sparg).
 
-# set up
+# set up (copied from https://github.com/osmond-lab/spacetrees)
 
 Here is how to get set up and run spacetrees, from the command-line:
 
-- Clone this directory, `git clone https://github.com/osmond-lab/spacetrees.git`.
+- Clone this directory, `git clone https://github.com/raghav034/spacetrees.git`.
 - Move into this directory, `cd spacetrees`.
 - Install Python v3.11.5 (https://www.python.org/downloads/release/python-3115/). On my server we can do this with `module load NiaEnv/2022a python/3.11.5`. May also work with similar versions. 
 - Create virtual environment, `python -m venv venv`. Make sure you are using the correct version of Python to do this.
@@ -38,4 +38,17 @@ Here is how to get set up and run spacetrees, from the command-line:
 	- open the Jupyter notebook plots.ipynb. I do this through my server's JupyterHub, https://ondemand.scinet.utoronto.ca
 	- run the code (command+enter to execute a cell)
 - Get in touch!
-	- I'd love to hear if you are using this software, have any suggested improvements, or need any help: mm.osmond@utoronto.ca
+	- raghav.singhal@mail.utoronto.ca for inquiries specific to this fork
+	- mm.osmond@utoronto.ca for inquires about the original repo (found at https://github.com/osmond-lab/spacetrees)
+
+Directory structure:
+
+- data: move input files (such as .anc, .mut, .poplabels) to this directory. Snakemake spits out output to this directory as well. Best to add 
+this directory to your .gitignore
+- plots: Any plots generated using jupyterhub are contained here
+- relate: Local installation of the relate framework (https://myersgroup.github.io/relate/). Do not change anything here after installation
+- 
+
+Additional notes:
+- After creating the virtual environment (assuming its named "venv") and installing packages, upon subsequent launches you can simply run 
+my startup.sh script to perform all the startup steps. Simply run '. startup.sh' from inside snakemake
