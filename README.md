@@ -5,8 +5,7 @@ This version of the code has been updated to allow for ancient samples.
 
 Formerly referred to as sparg, but that name is now reserved for inferring spatial histories from full ancestral recombination graphs (https://github.com/osmond-lab/sparg).
 
-# set up (copied from https://github.com/osmond-lab/spacetrees)
-
+# set up 
 Here is how to get set up and run spacetrees, from the command-line:
 
 - Clone this directory, `git clone https://github.com/raghav034/spacetrees.git`.
@@ -58,9 +57,9 @@ learn how it works
 - Jupyter notebooks:
 	- get_locations.ipynb: Takes the initial .poplabels file as input along with metadata for both ancient and contemporary samples. It then filters out samples that don't have associated metadata (latitutde and longitude information) and creates .locations files where the order of locations corresponds with the poplabels files. The locations file is twice the length of the poplabels file (it has the same location twice for a single sample) to account for a diploid population. It also has some code at the end to generate a new poplabels and locations file for samples within a particular latitude and longitude range for both ancients and samples. This might be useful if you want to focus your inference to a subset of the samples. Also contains code to extract a test set of the samples we want to "forget" locations for as future steps. 
 	Important note: If you are generating new poplabels and locations file you have to make sure your anc and mut files match up with them. Take a look at extract_subtrees rule within the Snakefile to understand how to do so.
-	ancients_new.ipynb: Contains all the code to generate many different plots for ancients and contemporary samples. 
-	find_lat_lon.ipynb: Helps extract samples within a desired latitudinal and longitudinal range
-	All the other jupyter notebooks (.ipynb files) contain code of the many iterations along the way or were used for debugging and may not be up to date or accurate.
+	- ancients_new.ipynb: Contains all the code to generate many different plots for ancients and contemporary samples. 
+	- find_lat_lon.ipynb: Helps extract samples within a desired latitudinal and longitudinal range
+	- All the other jupyter notebooks (.ipynb files) contain code of the many iterations along the way or were used for debugging and may not be up to date or accurate.
 
 Snakefile and future steps:
 
@@ -81,3 +80,4 @@ Additional notes:
 - After creating the virtual environment (assuming its named "venv") and installing packages, upon subsequent launches you can simply run 
 my startup.sh script to perform all the startup steps. Simply run '. startup.sh' from inside snakemake
 - I started working on a script (run.sh) to automate the setup, but there might be errors with it. Please be careful is using it to setup your project
+- The inference spits out thousands of files which can get messy to track, be sure to be consistent with your naming scheme to locate your files in the future.
