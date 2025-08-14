@@ -6,18 +6,19 @@ relatedir = 'relate' #path to your version of relate
 # we start by assuming you have run Relate's EstimatePopulationSize to get the following files (see https://myersgroup.github.io/relate/modules.html#CoalescenceRate)
 #prefix = 'test' #only contemporary samples
 
+prefix = 'contemporary_nw_samples_only_extracted'
 #prefix = 'SGDP_contemporary_only_chr2' #contemporary and ancient samples
 # anc = datadir + 'SGDP_aDNA_new_filtered_chr2.anc' #name of anc files, with wildcard for chromosome (chr)
 # mut = datadir + 'SGDP_aDNA_new_filtered_chr2.mut' #name of mut files
-anc = datadir + "SGDP_aDNA_new_filtered_chr2.anc"
-mut = datadir + "SGDP_aDNA_new_filtered_chr2.mut"
+anc = datadir + prefix + ".anc"
+mut = datadir + prefix + ".mut"
 #dist = datadir + prefix + '_chr{CHR}.dist' #name of dist files, only needed if analyzing a subregion of the chromosome, which we are here so that filesizes are small
 coal = datadir + 'SGDP_v1_annot_ne.coal' #name of coal file
 
 
 # you also need the locations of every sample in the same order you gave those samples to relate
 #locations = datadir + prefix + '.locations' #if individuals are diploid you need to repeat each location twice
-locations = datadir + "SGDP_aDNA_new_filtered.locations"
+locations = datadir + "contemporary_nw_samples_only.locations"
 
 CHRS = [2] #list of chromosomes you have anc/mut files for
 m = '4e-9' #estimated mutation rate
@@ -72,7 +73,7 @@ rule sample_trees:
     prefix_out = newick.replace('.newick','') #prefix of outfile (relate adds its own suffix)
   threads: 1
   resources:
-    runtime=60
+    runtime=660
   group:
     "sample"
   shell:
@@ -100,14 +101,14 @@ rule extract_subtrees:
   input:
     anc="data/SGDP_aDNA_new_chr2.anc",
     mut="data/SGDP_aDNA_new_chr2.mut",
-    poplabels="data/contemporary_nw_samples_only.poplabels",
+    poplabels="data/ancients_nw_samples_only_10.poplabels"
     #pops="data/contemporary_populations.txt"  # file with one population per line
   output:
-    anc_out="data/contemporary_nw_samples_only_extracted.anc",
-    mut_out="data/contemporary_nw_samples_only_extracted.mut",
-    poplabel_out="data/contemporary_nw_samples_only_extracted.poplabels"
+    anc_out="data/ancients_nw_samples_only_10_extracted.anc",
+    mut_out="data/ancients_nw_samples_only_10_extracted.mut",
+    poplabels_out="data/ancients_nw_samples_only_10_extracted.poplabels"
   resources:
-    runtime=480  # minutes
+    runtime=240  # minutes
   threads: 2
   run:
     populations = set()  # Use a set to ensure uniqueness
@@ -125,8 +126,8 @@ rule extract_subtrees:
         --anc {input.anc} \
         --mut {input.mut} \
         --poplabels {input.poplabels} \
-        --pop_of_interest {pop_string} \
-        -o data/contemporary_nw_samples_only_extracted
+        --pop_of_interest "{pop_string}" \
+        -o data/ancients_nw_samples_only_10_extracted
     """)
 #snakemake extract_subtrees --profile slurm --jobs 10
 
@@ -145,7 +146,7 @@ rule extract_times:
     ctss=coal_times
   threads: 1
   resources:
-    runtime=120
+    runtime=500
   group:
     "extract"
   run:
@@ -209,7 +210,7 @@ rule process_times:
     expand(processed_times, end=ends, allow_missing=True)
   threads: 1 
   resources:
-    runtime=15
+    runtime=45
   group:
     "process"
   run:
@@ -592,7 +593,9 @@ rule locate_forgotten_blup:
     forgotten_locations_blup
   threads: 1
   resources:
-    runtime=15
+    runtime=60
+  group:
+    "forgotten"
   run:
     # prevent numpy from using more than {threads} threads (useful for parallizing on my server)
     import os
@@ -635,14 +638,11 @@ rule locate_forgotten_blup:
     stss = stss_mat
 
     # locate ancestors
-    s = wildcards.s.split("_")
     if s == 'All': #an option to locate the ancestors of all samples
-      samples = range(n)   
-    else:
-      try:
-        samples = [int(s)]
-      except:
-        samples = [int(i) for i in s]
+      samples = range(n)  
+    s = wildcards.s.split("_") 
+    # Changed so that it takes a range instead of separate numbers
+    samples = range(int(s[0]), int(s[1]))
     t = wildcards.t
     if t == 'All': #an option to locate at pretermined list of times 
       times = ancestor_times
@@ -663,6 +663,9 @@ rule all:
   input:
     expand(dispersal_rate, M=Ms, T=Ts),
     expand(ancestor_locations, CHR=CHRS, locus=ancestor_loci, M=Ms, T=[None], s=['All'], t=['All']),
-    expand(ancestor_locations_blup, CHR=CHRS, locus=ancestor_loci, M=Ms, T=[None], s=['All'], t=['All']),
+    expand(ancestor_locations_blup_weightless, CHR=CHRS, locus=ancestor_loci, M=Ms, T=[None], s=['All'], t=['All']),
     expand(forgotten_locations_blup, CHR=CHRS, locus=ancestor_loci, M=Ms, T=[None], s=['218_219'], t=[None]) 
 
+rule locate_forgotten:
+  input:
+    expand(forgotten_locations_blup, CHR=CHRS, locus=ancestor_loci, M=Ms, T=[None], s=['39_139'], t=[None]) 
