@@ -41,14 +41,43 @@ Here is how to get set up and run spacetrees, from the command-line:
 	- raghav.singhal@mail.utoronto.ca for inquiries specific to this fork
 	- mm.osmond@utoronto.ca for inquires about the original repo (found at https://github.com/osmond-lab/spacetrees)
 
-Directory structure:
+Directories:
 
 - data: move input files (such as .anc, .mut, .poplabels) to this directory. Snakemake spits out output to this directory as well. Best to add 
 this directory to your .gitignore
 - plots: Any plots generated using jupyterhub are contained here
 - relate: Local installation of the relate framework (https://myersgroup.github.io/relate/). Do not change anything here after installation
-- 
+- tsconvert: Local installing of the tsconvert framework (https://github.com/tskit-dev/tsconvert). Do not change
+
+Files:
+- Snakefile: The main snakemake file that orchestrates the entire pipeline. Read documentation at https://snakemake.readthedocs.io/en/stable/ to 
+learn how it works
+- spacetrees.py: Contains useful functions and calculations used by the snakefile to perform various steps of the inference pipeline
+- spacetrees_old.py: An older version of the spacetrees.py logic, maintained as a useful reference point
+- utils.py : More helper methods
+- Jupyter notebooks:
+	- get_locations.ipynb: Takes the initial .poplabels file as input along with metadata for both ancient and contemporary samples. It then filters out samples that don't have associated metadata (latitutde and longitude information) and creates .locations files where the order of locations corresponds with the poplabels files. The locations file is twice the length of the poplabels file (it has the same location twice for a single sample) to account for a diploid population. It also has some code at the end to generate a new poplabels and locations file for samples within a particular latitude and longitude range for both ancients and samples. This might be useful if you want to focus your inference to a subset of the samples. Also contains code to extract a test set of the samples we want to "forget" locations for as future steps. 
+	Important note: If you are generating new poplabels and locations file you have to make sure your anc and mut files match up with them. Take a look at extract_subtrees rule within the Snakefile to understand how to do so.
+	ancients_new.ipynb: Contains all the code to generate many different plots for ancients and contemporary samples. 
+	find_lat_lon.ipynb: Helps extract samples within a desired latitudinal and longitudinal range
+	All the other jupyter notebooks (.ipynb files) contain code of the many iterations along the way or were used for debugging and may not be up to date or accurate.
+
+Snakefile and future steps:
+
+To run a new inference you will need your desired .anc, .mut, .coal, and .locations files. The .locations file can be extracted from your .poplabels file as described in the get_locations.ipynb notebook above. If you generated new locations and/or poplabels files that have the number of samples altered you MUST run the extract_subtrees rule to get new anc and mut files and then feed those in to the Snakefile before running the inference. Steps:
+1) run the "extract_subtrees" rule using "snakemake extract_subtrees". You have to change the input and output file names and path as appropriate for your files
+2) Once you get back the new anc, mut ,and poplabels files from extract_subtrees take these new files and feed them into the Snakefile by changing the anc and mut file names on top. Locations should correspond with these new anc and mut files since you used to same poplabels file to make the locations file as well as the anc and mut files.
+3) Change dispersal_loci to the loci you want to use to infer dispersal (may not be applicable if using BLUP)
+4) Change ancestor_loci to the loci you want the locate ancestors at
+5) Change ancestor_times to the times at which you want to locate ancestors. A log time scale was used here
+Note: "config.py" has some code to estimate which loci you want to use. Paste the output directly to the Snakefile and don't use numpy directly in the Snakefile as it 
+can cause a segmentation fault on Niagara
+6) Now you can run the inference using "snakemake all" or "snakemake locate_forgotten" depending on your use case. Change the wildcards as needed for your use.
+
+For future steps we want to quantify accuracy by forgetting locations of some samples and predicting those sample locations with and without ancient samples. These files with the test data (the samples we want to forget locations of) can be generated using the "get_locations.ipynb" file as described above 
+
 
 Additional notes:
 - After creating the virtual environment (assuming its named "venv") and installing packages, upon subsequent launches you can simply run 
 my startup.sh script to perform all the startup steps. Simply run '. startup.sh' from inside snakemake
+- I started working on a script (run.sh) to automate the setup, but there might be errors with it. Please be careful is using it to setup your project

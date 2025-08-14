@@ -4,12 +4,10 @@ datadir = 'data/' #relative path to data directory
 relatedir = 'relate' #path to your version of relate
 
 # we start by assuming you have run Relate's EstimatePopulationSize to get the following files (see https://myersgroup.github.io/relate/modules.html#CoalescenceRate)
-#prefix = 'test' #only contemporary samples
+# if you ran extract_subtrees please also update files here
 
 prefix = 'contemporary_nw_samples_only_extracted'
-#prefix = 'SGDP_contemporary_only_chr2' #contemporary and ancient samples
-# anc = datadir + 'SGDP_aDNA_new_filtered_chr2.anc' #name of anc files, with wildcard for chromosome (chr)
-# mut = datadir + 'SGDP_aDNA_new_filtered_chr2.mut' #name of mut files
+
 anc = datadir + prefix + ".anc"
 mut = datadir + prefix + ".mut"
 #dist = datadir + prefix + '_chr{CHR}.dist' #name of dist files, only needed if analyzing a subregion of the chromosome, which we are here so that filesizes are small
